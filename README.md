@@ -1,7 +1,7 @@
-# LLM Financial Assistant (FastAPI + RAG)
+# LLM Assistant (FastAPI + RAG)
 
-This project implements an **intelligent financial assistant** powered by a **Large Language Model (LLM)** and a **Retrieval-Augmented Generation (RAG)** architecture.  
-The goal is to automatically **analyze financial documents (PDF or text)**, **extract key information**, and **answer natural language questions**.
+This project implements an **intelligent assistant** powered by a **Large Language Model (LLM)** and a **Retrieval-Augmented Generation (RAG)** architecture.  
+The goal is to automatically **analyze documents (PDF or text)**, **extract key information**, and **answer natural language questions**.
 
 ---
 
@@ -36,7 +36,7 @@ llm_fin_assistant/
 
 ```bash
 git clone https://github.com/AmaelMombereau/Llm_assistant.git
-cd llm_fin_assistant
+cd llm_assistant
 ```
 
 ### 2. Create and activate a virtual environment
