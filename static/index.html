@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LLM Financial Assistant — UI</title>
+  <style>
+    :root { --bg:#0b1020; --card:#131a33; --muted:#97a0c3; --accent:#5b8cff; --ok:#2ecc71; --bad:#e74c3c; }
+    *{box-sizing:border-box}
+    body{margin:0; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:#e6e9ff}
+    header{padding:24px 16px; text-align:center; border-bottom:1px solid #2a3158}
+    header h1{margin:0; font-size:20px; font-weight:700}
+    main{max-width:960px; margin:24px auto; padding:0 16px; display:grid; gap:16px}
+    .card{background:var(--card); border:1px solid #24305a; border-radius:16px; padding:16px; box-shadow:0 4px 16px rgba(0,0,0,.25)}
+    .row{display:flex; gap:12px; flex-wrap:wrap; align-items:center}
+    button{appearance:none; border:1px solid #3a56a1; background:linear-gradient(180deg,#5b8cff,#3f62c3); color:#fff; padding:10px 14px; border-radius:12px; cursor:pointer; font-weight:600}
+    button:disabled{opacity:.6; cursor:not-allowed}
+    .muted{color:var(--muted); font-size:13px}
+    input[type="number"], input[type="text"], textarea{width:100%; background:#0e1530; color:#e6e9ff; border:1px solid #24305a; border-radius:12px; padding:10px 12px;}
+    .pill{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; background:#0e1530; border:1px solid #24305a; font-size:12px}
+    .drop{border:2px dashed #3a56a1; border-radius:16px; padding:20px; text-align:center; background:#0f1631}
+    .file-list{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px}
+    .hint{font-size:12px; color:var(--muted)}
+    .log{white-space:pre-wrap; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; background:#0e1530; border:1px solid #24305a; border-radius:12px; padding:12px; max-height:220px; overflow:auto}
+    .answer{font-size:16px; line-height:1.5}
+    a{color:#9bb8ff}
+    .success{color:var(--ok)}
+    .error{color:var(--bad)}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>LLM Financial Assistant — Interface locale</h1>
+    <div class="muted">Téléversez des PDF → Ingestion → Posez des questions à /ask</div>
+  </header>
+  <main>
+    <!-- Upload -->
+    <section class="card">
+      <h2>1) Téléverser des PDF</h2>
+      <div class="row">
+        <input id="fileInput" type="file" accept="application/pdf" multiple />
+        <button id="btnUpload">Uploader vers /upload</button>
+        <span class="muted">Les fichiers seront enregistrés dans le dossier <code>data/</code> côté serveur.</span>
+      </div>
+      <div id="drop" class="drop" style="margin-top:12px;">Glissez-déposez vos PDF ici</div>
+      <div id="uploadStatus" class="hint" style="margin-top:8px;"></div>
+      <div id="savedPaths" class="file-list"></div>
+    </section>
+
+    <!-- Ingest -->
+    <section class="card">
+      <h2>2) Ingestion</h2>
+      <div class="row">
+        <button id="btnIngest">Ingestion des fichiers sauvegardés</button>
+        <span class="muted">Appelle <code>POST /ingest</code> avec <code>{ paths: [...] }</code>.</span>
+      </div>
+      <div id="ingestStatus" class="hint" style="margin-top:8px;"></div>
+    </section>
+
+    <!-- Ask -->
+    <section class="card">
+      <h2>3) Poser une question</h2>
+      <div class="row">
+        <input id="question" type="text" placeholder="Ex: Donne-moi le résumé des documents ingérés" />
+        <input id="k" type="number" min="1" value="4" style="max-width:120px" />
+        <button id="btnAsk">Demander à /ask</button>
+      </div>
+      <div id="askStatus" class="hint" style="margin-top:8px;"></div>
+      <div id="answer" class="answer" style="margin-top:12px;"></div>
+      <div>
+        <h3>Contexte</h3>
+        <div id="context" class="log"></div>
+      </div>
+    </section>
+
+    <!-- Console -->
+    <section class="card">
+      <h2>Console</h2>
+      <div id="console" class="log"></div>
+    </section>
+  </main>
+
+  <script>
+    // --- API base URL detection ---
+    // If the page is served from FastAPI (http://127.0.0.1:8000), window.location.origin convient.
+    // If you opened this file locally (file://...), fall back to the API running on 127.0.0.1:8000.
+    const API = (location.origin.startsWith('http')) ? location.origin : 'http://127.0.0.1:8000';
+    const $ = (sel) => document.querySelector(sel);
+    const logBox = $('#console');
+    const savedPathsEl = $('#savedPaths');
+
+    let savedPaths = []; // chemins renvoyés par /upload (dans data/)
+
+    function log(msg){
+      const time = new Date().toLocaleTimeString();
+      logBox.textContent += `[${time}] ${msg}\n`;
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    async function uploadFiles(files){
+      if(!files || !files.length){ log('Aucun fichier sélectionné.'); return; }
+      const form = new FormData();
+      for (const f of files){ form.append('files', f); }
+      $('#btnUpload').disabled = true; $('#uploadStatus').textContent = 'Upload en cours…';
+      try {
+        const res = await fetch(`${API}/upload`, { method:'POST', body: form });
+        const data = await res.json();
+        if(!res.ok) throw new Error(JSON.stringify(data));
+        const paths = data.saved_paths || [];
+        savedPaths = paths;
+        renderPaths();
+        $('#uploadStatus').innerHTML = `<span class="success">Upload OK</span> — ${paths.length} fichier(s).`;
+        log(`Upload OK: ${paths.join(', ')}`);
+      } catch(e){
+        $('#uploadStatus').innerHTML = `<span class="error">Upload KO</span>`;
+        log('Upload error: ' + e);
+      } finally {
+        $('#btnUpload').disabled = false;
+      }
+    }
+
+    function renderPaths(){
+      savedPathsEl.innerHTML = '';
+      for (const p of savedPaths){
+        const pill = document.createElement('span');
+        pill.className = 'pill';
+        pill.textContent = p;
+        savedPathsEl.appendChild(pill);
+      }
+    }
+
+    async function ingest(){
+      if(!savedPaths.length){
+        $('#ingestStatus').innerHTML = '<span class="error">Aucun chemin. Uploade d\'abord des PDF.</span>';
+        return;
+      }
+      $('#btnIngest').disabled = true; $('#ingestStatus').textContent = 'Ingestion en cours…';
+      try{
+        const res = await fetch(`${API}/ingest`, {
+          method:'POST', headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ paths: savedPaths })
+        });
+        const data = await res.json().catch(()=>({}));
+        if(!res.ok) throw new Error(JSON.stringify(data));
+        $('#ingestStatus').innerHTML = '<span class="success">Ingestion OK</span>';
+        log('Ingestion OK ' + JSON.stringify(data));
+      }catch(e){
+        $('#ingestStatus').innerHTML = '<span class="error">Ingestion KO</span>';
+        log('Ingestion error: ' + e);
+      }finally{
+        $('#btnIngest').disabled = false;
+      }
+    }
+
+    async function ask(){
+      const q = $('#question').value?.trim();
+      const k = parseInt($('#k').value || '4', 10);
+      if(!q){ $('#askStatus').innerHTML = '<span class="error">Écris une question.</span>'; return; }
+      $('#btnAsk').disabled = true; $('#askStatus').textContent = 'Requête /ask…';
+      try{
+        const res = await fetch(`${API}/ask`, {
+          method:'POST', headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ question: q, k })
+        });
+        const data = await res.json();
+        if(!res.ok) throw new Error(JSON.stringify(data));
+        $('#answer').textContent = data.answer || '(pas de réponse)';
+        $('#context').textContent = (data.context || []).join('\n\n');
+        $('#askStatus').innerHTML = '<span class="success">OK</span>';
+        log('Ask OK ' + (data.answer||''));
+      }catch(e){
+        $('#askStatus').innerHTML = '<span class="error">KO</span>';
+        log('Ask error: ' + e);
+      }finally{
+        $('#btnAsk').disabled = false;
+      }
+    }
+
+    // UI handlers
+    $('#btnUpload').addEventListener('click', () => uploadFiles($('#fileInput').files));
+    $('#btnIngest').addEventListener('click', ingest);
+    $('#btnAsk').addEventListener('click', ask);
+
+    // Drag & drop
+    const drop = document.getElementById('drop');
+    drop.addEventListener('dragover', (e)=>{ e.preventDefault(); drop.style.opacity = .8; });
+    drop.addEventListener('dragleave', ()=>{ drop.style.opacity = 1; });
+    drop.addEventListener('drop', (e)=>{
+      e.preventDefault(); drop.style.opacity = 1;
+      const files = [...e.dataTransfer.files].filter(f=>/\.pdf$/i.test(f.name));
+      uploadFiles(files);
+    });
+  </script>
+</body>
+</html>
