@@ -14,4 +14,4 @@ This project demonstrates an LLM-powered assistant for financial documents. It s
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-uvicorn app.main:app --reload```
+uvicorn app.main:app --reload
