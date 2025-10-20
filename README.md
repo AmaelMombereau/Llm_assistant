@@ -17,16 +17,17 @@ The goal is to automatically **analyze documents (PDF or text)**, **extract key 
 ---
 
 ## Project Structure
-
+```bash
 llm_fin_assistant/
-┣ app/
-┃ ┣ main.py # FastAPI app with /upload, /ingest, /ask
-┣ data/ # Folder containing uploaded files
-┣ static/
-┃ ┗ index.html # Web interface
-┣ requirements.txt
-┗ README.md
+├── app/
+│   └── main.py              # FastAPI app (endpoints: /upload, /ingest, /ask)
+├── data/                    # Folder for uploaded PDF files
+├── static/
+│   └── index.html           # Web interface (frontend)
+├── requirements.txt         # Python dependencies
+└── README.md                # Project documentation
 
+```
 
 ---
 
